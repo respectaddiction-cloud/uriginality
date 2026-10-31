@@ -282,7 +282,7 @@ button.thumb{cursor:pointer;font:inherit}
         <p class="note" id="phMode"></p>
         <div class="chips" id="phChips"></div>
         <div class="thumbs" id="phThumbs"></div>
-        <p class="note">기출 유형 비율에 맞춰 30장을 짰어요. 부모와 자녀 7, 꾸짖음·대치 6, 밝은 가족 4, 병실·이별 5, 직장 위계 4, 1인 응시 4. 사진이 없는 칸은 글로 쓴 장면 설명으로 연습해요.</p>
+        <p class="note">기출 유형 비율에 맞춰 30장을 골랐어요. 부모와 자녀 7, 꾸짖음·대치 6, 밝은 가족 4, 병실·이별 5, 직장 위계 4, 1인 응시 4. 사진 출처: Pexels(무료 사용 가능 사진).</p>
       </div>
     </section>
 
@@ -395,7 +395,7 @@ button.thumb{cursor:pointer;font:inherit}
     <p class="note" id="libMode"></p>
     <div class="addrow" id="libAdd">
       <span>지금 넣을 칸: <b id="selNo">01</b></span>
-      <span>칸을 누르고 사진을 복사해 <kbd>Ctrl</kbd>+<kbd>V</kbd>, 끌어다 놓기, 또는 칸의 <b>사진 넣기</b> 버튼. 각 칸의 장면 설명과 비슷한 사진을 넣어야 모범 답안과 맞아요.</span>
+      <span>칸을 누르고 사진을 복사해 <kbd>Ctrl</kbd>+<kbd>V</kbd>, 끌어다 놓기, 또는 칸의 <b>다른 사진으로 바꾸기</b> 버튼. 모범 답안은 기본 사진에 맞춰 쓰여 있어서, 바꾼 사진에는 답안이 딱 맞지 않을 수 있어요.</span>
     </div>
     <div class="libgrid" id="libGrid"></div>
   </div>
@@ -477,8 +477,11 @@ const S = {
   cards: [], ci: -1, checks: {}, raf: 0, ansTab: 0
 };
 const photos = () => (S.mode === 'cloud' ? S.cloud : S.local);
-const photoAt = i => photos()[slotId(i)] || null;
+const uploadedAt = i => photos()[slotId(i)] || null;
+// 선생님이 넣은 사진이 있으면 그 사진, 없으면 기본 사진(photos/sNN.jpg)
+const photoAt = i => uploadedAt(i) || (SCENES[i] && SCENES[i].img ? { src: SCENES[i].img, source: 'builtin' } : null);
 const photoCount = () => SCENES.filter((_, i) => photoAt(i)).length;
+const uploadCount = () => SCENES.filter((_, i) => uploadedAt(i)).length;
 
 const ringBar = $('#ringBar'), ringNum = $('#ringNum'), pill = $('#pill'), barFill = $('#barFill'), ring = $('#ring');
 
@@ -642,7 +645,7 @@ function shrink(file) {
   });
 }
 function nextEmpty(from) {
-  for (let k = 1; k <= N; k++) { const j = (from + k) % N; if (!photoAt(j)) return j; }
+  for (let k = 1; k <= N; k++) { const j = (from + k) % N; if (!uploadedAt(j)) return j; }
   return (from + 1) % N;
 }
 let busy = false;
@@ -678,7 +681,7 @@ async function addFiles(list, start) {
   else toast(lastMsg);
 }
 async function removePhoto(i) {
-  const id = slotId(i), p = photoAt(i);
+  const id = slotId(i), p = uploadedAt(i);
   if (!p) return;
   if (p.source === 'cloud') {
     try { await Cloud.db.collection('slots').doc(id).delete(); }
@@ -689,13 +692,13 @@ async function removePhoto(i) {
     try { URL.revokeObjectURL(p.src); } catch (e) {}
     delete S.local[id];
   }
-  toast((i + 1) + '번 칸의 사진을 지웠어요.');
+  toast((i + 1) + '번 칸이 기본 사진으로 돌아갔어요.');
   renderPhotos();
 }
 function armDelete(btn, i) {
   if (btn.classList.contains('arm')) { btn.disabled = true; removePhoto(i); return; }
   btn.classList.add('arm'); btn.textContent = '정말 삭제';
-  setTimeout(() => { if (btn.isConnected && !btn.disabled) { btn.classList.remove('arm'); btn.textContent = '삭제'; } }, 3000);
+  setTimeout(() => { if (btn.isConnected && !btn.disabled) { btn.classList.remove('arm'); btn.textContent = '기본 사진으로'; } }, 3000);
 }
 
 /* ---------- 그리기 ---------- */
@@ -730,7 +733,8 @@ function thumbEl(i, tag) {
 function renderPhotoSummary() {
   const c = photoCount();
   $('#phCount').textContent = '사진 ' + c + ' / ' + N + '장';
-  $('#phMode').textContent = (c < N ? '빈 칸 ' + (N - c) + '개는 장면 설명 글로 나와요. ' : '') + modeNote();
+  const u = uploadCount();
+  $('#phMode').textContent = '기본 사진 30장이 들어 있어요. 칸을 누르면 다른 사진으로 바꿀 수 있어요.' + (u ? ' 직접 바꾼 사진 ' + u + '장. ' + modeNote() : '');
   kindChips($('#phChips'));
   const th = $('#phThumbs'); th.textContent = '';
   SCENES.forEach((_, i) => {
@@ -752,13 +756,13 @@ function renderLib() {
     th.setAttribute('aria-label', (i + 1) + '번 칸 고르기');
     th.addEventListener('click', () => { S.sel = i; renderLib(); });
     const k = document.createElement('div'); k.className = 'k'; k.textContent = sc.kind + ' · ' + sc.text.slice(0, 42) + '…';
-    const f = document.createElement('div'); f.className = 'find'; f.textContent = '검색어: ' + sc.find;
+    const f = document.createElement('div'); f.className = 'find'; f.textContent = (uploadedAt(i) ? '직접 넣은 사진' : '기본 사진 · ' + (sc.credit || '')) + ' · 바꿀 때 검색어: ' + sc.find;
     const row = document.createElement('div'); row.className = 'row';
-    const add = document.createElement('button'); add.type = 'button'; add.className = 'del'; add.textContent = photoAt(i) ? '바꾸기' : '사진 넣기';
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'del'; add.textContent = '다른 사진으로 바꾸기';
     add.hidden = !S.canAdd;
     add.addEventListener('click', () => { S.sel = i; pickFor = i; $('#fileIn').click(); });
     const del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '삭제';
-    del.hidden = !S.canAdd || !photoAt(i);
+    del.textContent = '기본 사진으로'; del.hidden = !S.canAdd || !uploadedAt(i);
     del.addEventListener('click', () => armDelete(del, i));
     row.append(add, del);
     it.append(th, k, f, row);
